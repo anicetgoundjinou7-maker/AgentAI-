@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Represents a discussion thread created by a user",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the conversation matching the document ID"
+        },
+        "userId": {
+          "type": "string",
+          "description": "The Google User UUID who owns this conversation"
+        },
+        "title": {
+          "type": "string",
+          "description": "User visible title of the thread"
+        },
+        "systemInstruction": {
+          "type": "string",
+          "description": "The system behavior directive injected in Gemini calls"
+        },
+        "useSearch": {
+          "type": "boolean",
+          "description": "Whether Google Search grounding is enabled for this thread"
+        },
+        "modelName": {
+          "type": "string",
+          "description": "Active model alias being queried in the chat"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Readable local timestamp string"
+        }
+      },
+      "required": ["id", "userId", "title", "systemInstruction", "useSearch", "modelName", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single text message belonging to a discussion thread",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Message unique identifier"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["user", "model"],
+          "description": "The role who emitted the message"
+        },
+        "parts": {
+          "type": "string",
+          "description": "The raw markdown content of the message"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "HH:MM formatted timestamp"
+        }
+      },
+      "required": ["id", "role", "parts", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Chat conversations collection owned by authenticated users"
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Sub-collection of messages associated with a conversation"
+    }
+  }
+}

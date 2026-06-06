@@ -1,0 +1,80 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Catch-all default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Hardened Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z50-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Validation helpers ---
+    function isValidConversation(data) {
+      return data.id is string && data.id.size() <= 100
+        && data.title is string && data.title.size() <= 200
+        && data.userId is string && data.userId == request.auth.uid
+        && data.systemInstruction is string && data.systemInstruction.size() <= 2000
+        && data.useSearch is bool
+        && data.modelName is string && data.modelName.size() <= 100
+        && data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
+    function isValidMessage(data) {
+      return data.id is string && data.id.size() <= 100
+        && data.role is string && (data.role == 'user' || data.role == 'model')
+        && data.parts is string && data.parts.size() <= 50000
+        && data.timestamp is string && data.timestamp.size() <= 50;
+    }
+
+    // --- Conversations Routes ---
+    match /conversations/{conversationId} {
+      allow create: if isSignedIn()
+        && isValidId(conversationId)
+        && isValidConversation(incoming());
+
+      allow read: if isSignedIn()
+        && isOwner(existing().userId);
+
+      allow update: if isSignedIn()
+        && isOwner(existing().userId)
+        && isValidConversation(incoming())
+        && incoming().userId == existing().userId; // Keep owner immutable
+
+      allow delete: if isSignedIn()
+        && isOwner(existing().userId);
+
+      // --- Nested messages subcollection ---
+      match /messages/{messageId} {
+        allow create, update: if isSignedIn()
+          && isValidId(messageId)
+          && isValidId(conversationId)
+          && isOwner(get(/databases/$(database)/documents/conversations/$(conversationId)).data.userId)
+          && isValidMessage(incoming());
+
+        allow read, delete: if isSignedIn()
+          && isValidId(conversationId)
+          && isOwner(get(/databases/$(database)/documents/conversations/$(conversationId)).data.userId);
+      }
+    }
+  }
+}

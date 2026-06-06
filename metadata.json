@@ -1,0 +1,6 @@
+{
+  "name": "Anicetgdn AI",
+  "description": "Un assistant virtuel intelligent et bienveillant propulsé par l'API Gemini. Comprend la recherche Google en ligne, la synchronisation cloud sécurisée via Google Login et des profils d'assistants sur-mesure.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
