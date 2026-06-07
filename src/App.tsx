@@ -1308,7 +1308,7 @@ export default function App() {
           </div>
 
           {/* Sidebar Footer */}
-          <div id="sidebar-footer" className="border-t border-zinc-800 bg-zinc-950 p-4 space-y-3">
+          <div id="sidebar-footer" className="border-t border-zinc-800 bg-zinc-950 p-4">
             <div className="flex items-center gap-3">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-zinc-800 font-display text-sm font-bold text-emerald-400 border border-zinc-700">
                 A
@@ -1318,22 +1318,6 @@ export default function App() {
                 <span className="block text-[9px] text-zinc-400 mt-0.5">Propulsé par Google Gemini</span>
               </div>
             </div>
-
-            <button
-              id="network-status-btn"
-              type="button"
-              onClick={() => setShowKeyHelpModal(true)}
-              className="w-full flex items-center justify-between text-[11px] text-zinc-500 hover:text-zinc-300 p-1.5 rounded-lg border border-transparent hover:border-zinc-800 hover:bg-zinc-900 transition-all text-left cursor-pointer"
-              title="Cliquer pour configurer la clé d'API"
-            >
-              <div className="flex items-center gap-1.5">
-                <span className={`h-2 w-2 rounded-full ${backendConfigured ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
-                <span>Statut Réseau</span>
-              </div>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${backendConfigured ? "text-emerald-400 bg-emerald-950/40" : "text-yellow-400 bg-yellow-950/30 font-bold"}`}>
-                {backendConfigured ? "En ligne" : "Configurer ⚠️"}
-              </span>
-            </button>
           </div>
 
         </div>
