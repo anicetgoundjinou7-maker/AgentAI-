@@ -1,9 +1,10 @@
 {
-  "apiKey": "placeholder-api-key",
-  "authDomain": "placeholder.firebaseapp.com",
-  "projectId": "placeholder-project-id",
-  "storageBucket": "placeholder-storage.appspot.com",
-  "messagingSenderId": "1234567890",
-  "appId": "1:1234567890:web:123456abc",
-  "firestoreDatabaseId": "(default)"
+  "projectId": "gen-lang-client-0703836972",
+  "appId": "1:148251214791:web:dc0dd7389e344603108fe2",
+  "apiKey": "AIzaSyBkz_DRFy7p_a9MpEPFA2bb--pB-Epyg00",
+  "authDomain": "gen-lang-client-0703836972.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-497d8e97-a9d6-4645-acef-ac28ae034daf",
+  "storageBucket": "gen-lang-client-0703836972.firebasestorage.app",
+  "messagingSenderId": "148251214791",
+  "measurementId": ""
 }
