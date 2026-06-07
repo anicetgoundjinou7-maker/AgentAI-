@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import Markdown from "react-markdown";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import {
   MessageSquare,
   Plus,
@@ -35,6 +37,9 @@ import {
   VolumeX,
   Camera,
   Image,
+  Calculator,
+  Atom,
+  Dna,
 } from "lucide-react";
 import {
   auth,
@@ -162,6 +167,8 @@ export default function App() {
   const [backendConfigured, setBackendConfigured] = useState<boolean | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [authError, setAuthError] = useState<{ code: string; message: string; domain?: string } | null>(null);
+  const [showKeyHelpModal, setShowKeyHelpModal] = useState(false);
 
   // Active URLs for mobile sync
   const [remoteUrl, setRemoteUrl] = useState("");
@@ -183,6 +190,72 @@ export default function App() {
   // Refs
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Message long-press and editing states
+  const [activeMenuMsgId, setActiveMenuMsgId] = useState<string | null>(null);
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editMsgInput, setEditMsgInput] = useState("");
+
+  const longPressTimeoutRef = useRef<any>(null);
+  const touchStartedRef = useRef<boolean>(false);
+
+  const startLongPress = (msgId: string, text: string) => {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+    }
+    touchStartedRef.current = true;
+    longPressTimeoutRef.current = setTimeout(() => {
+      setActiveMenuMsgId(msgId);
+      setEditMsgInput(text);
+    }, 600);
+  };
+
+  const cancelLongPress = () => {
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+      longPressTimeoutRef.current = null;
+    }
+    touchStartedRef.current = false;
+  };
+
+  const handleEditMessageSave = async (msgId: string) => {
+    if (!activeId) return;
+    const cleanText = editMsgInput.trim();
+    if (!cleanText) return;
+
+    // Local instant state change
+    setActiveMessages((prev) =>
+      prev.map((m) => (m.id === msgId ? { ...m, parts: cleanText } : m))
+    );
+
+    if (!user) {
+      // Offline Flow
+      setConversations((prev) =>
+        prev.map((c) => {
+          if (c.id === activeId) {
+            return {
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === msgId ? { ...m, parts: cleanText } : m
+              ),
+            };
+          }
+          return c;
+        })
+      );
+    } else {
+      // Cloud Flow
+      try {
+        const msgRef = doc(db, "conversations", activeId, "messages", msgId);
+        await updateDoc(msgRef, { parts: cleanText });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.UPDATE, `conversations/${activeId}/messages/${msgId}`);
+      }
+    }
+
+    setEditingMsgId(null);
+    setActiveMenuMsgId(null);
+  };
 
   // Dynamic time-based greeting (Bonjour or Bonsoir)
   const currentHour = new Date().getHours();
@@ -346,9 +419,17 @@ export default function App() {
   // Authenticate user flow
   const handleGoogleSignIn = async () => {
     try {
+      setAuthError(null);
       await logInWithGoogle();
-    } catch (err) {
+    } catch (err: any) {
       console.error("Sign-in trigger failure:", err);
+      const errCode = err?.code || "";
+      const errMsg = err?.message || String(err);
+      setAuthError({
+        code: errCode,
+        message: errMsg,
+        domain: typeof window !== "undefined" ? window.location.origin : undefined,
+      });
     }
   };
 
@@ -1238,13 +1319,21 @@ export default function App() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-zinc-500">
+            <button
+              id="network-status-btn"
+              type="button"
+              onClick={() => setShowKeyHelpModal(true)}
+              className="w-full flex items-center justify-between text-[11px] text-zinc-500 hover:text-zinc-300 p-1.5 rounded-lg border border-transparent hover:border-zinc-800 hover:bg-zinc-900 transition-all text-left cursor-pointer"
+              title="Cliquer pour configurer la clé d'API"
+            >
               <div className="flex items-center gap-1.5">
                 <span className={`h-2 w-2 rounded-full ${backendConfigured ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
                 <span>Statut Réseau</span>
               </div>
-              <span className="text-[10px] text-zinc-400">{backendConfigured ? "En ligne" : "Erreur Clé"}</span>
-            </div>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${backendConfigured ? "text-emerald-400 bg-emerald-950/40" : "text-yellow-400 bg-yellow-950/30 font-bold"}`}>
+                {backendConfigured ? "En ligne" : "Configurer ⚠️"}
+              </span>
+            </button>
           </div>
 
         </div>
@@ -1275,53 +1364,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Header controls layout */}
+          {/* Header controls layout (removed Lien Mobile, Recherche Web, and Changer Rôle) */}
           <div className="flex items-center gap-2 text-xs">
-            {/* Quick access code on phone */}
-            <button
-              id="mobile-sync-btn"
-              onClick={() => setShowQrModal(true)}
-              className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium border bg-zinc-900 text-zinc-400 border-zinc-850 hover:text-emerald-400 hover:border-emerald-900/40 hover:bg-emerald-950/10 cursor-pointer"
-              title="Générer un lien fixe et code QR d'accès mobile pour smartphones"
-            >
-              <Smartphone className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Lien Mobile</span>
-            </button>
-
-            {/* Grounding switch (Recherche Google) */}
-            <button
-              id="google-search-toggle"
-              onClick={() => {
-                const updated = !useSearch;
-                setUseSearch(updated);
-                updateActiveConfig({ useSearch: updated });
-              }}
-              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-medium border transition-all cursor-pointer ${
-                useSearch
-                  ? "bg-emerald-950/50 text-emerald-400 border-emerald-700/60 shadow-lg"
-                  : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200 hover:bg-zinc-850"
-              }`}
-              title="Activer la recherche Google en ligne pour grounding"
-            >
-              <Globe className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Recherche Web</span>
-              {useSearch && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />}
-            </button>
-
-            {/* Configurations toggles */}
-            <button
-              id="presets-config-btn"
-              onClick={() => setShowSettings(!showSettings)}
-              className={`flex items-center gap-1 px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
-                showSettings
-                  ? "bg-zinc-800 text-white border-zinc-700"
-                  : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-zinc-200"
-              }`}
-              title="Configurer les rôles d'Anicetgdn AI"
-            >
-              <Settings className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline font-medium">Changer Rôle</span>
-            </button>
           </div>
         </header>
 
@@ -1346,7 +1390,7 @@ export default function App() {
             </div>
 
             {/* Presets Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5">
               {PRESET_INSTRUCTIONS.map((preset) => {
                 const isSelected = systemInstruction === preset.instruction;
                 return (
@@ -1368,6 +1412,9 @@ export default function App() {
                       {preset.icon === "Code" && <Code className="h-4 w-4" />}
                       {preset.icon === "PenTool" && <PenTool className="h-4 w-4" />}
                       {preset.icon === "GraduationCap" && <GraduationCap className="h-4 w-4" />}
+                      {preset.icon === "Calculator" && <Calculator className="h-4 w-4" />}
+                      {preset.icon === "Atom" && <Atom className="h-4 w-4" />}
+                      {preset.icon === "Dna" && <Dna className="h-4 w-4" />}
                     </span>
                     <div className="space-y-0.5 min-w-0">
                       <span className="block text-[11px] font-bold text-zinc-200 truncate">{preset.name}</span>
@@ -1400,52 +1447,13 @@ export default function App() {
           
           {/* Welcome Dashboard (ChatGPT style landing designed purely for Anicetgdn AI) */}
           {(!activeId || activeMessages.length === 0) ? (
-            <div id="welcome-container" className="h-full flex flex-col justify-center items-center max-w-xl mx-auto py-12 space-y-8 select-none">
-              
-              {/* Central brand circle */}
-              <div className="text-center space-y-6">
-                <div className="inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-tr from-red-500 to-red-700 text-white shadow-2xl relative group">
-                  <div className="absolute inset-0 rounded-3xl bg-red-400 filter blur opacity-30 animate-pulse" />
-                  <Ladybug className="h-11 w-11 text-zinc-950 relative" strokeWidth={2.2} />
-                </div>
-                <div className="space-y-3">
-                  <h1 className="text-4xl font-bold font-display tracking-tight text-white sm:text-5xl">
-                    {greeting}{user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""} !
-                  </h1>
-                  <h2 className="text-2xl font-medium text-emerald-400 sm:text-3xl font-display">
-                    Comment puis-je vous aider ?
-                  </h2>
-                </div>
-                <p className="text-sm text-zinc-400 max-w-md mx-auto leading-relaxed">
-                  Je suis <span className="text-zinc-200 font-semibold font-display">Anicetgdn AI</span>, votre compagnon virtuel bienveillant, conçu pour répondre à toutes vos questions et vous accompagner vers le meilleur chemin.
-                </p>
-              </div>
-
-              {/* Minimalist safety & guide reminder */}
-              <div className="w-full border border-zinc-850 bg-zinc-900/20 rounded-2xl p-4 flex gap-3 text-zinc-400 text-xs text-left max-w-md">
-                <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-400 mt-0.5" />
-                <div className="space-y-1">
-                  <span className="block font-bold text-zinc-200 font-display">Garde-fou d'intégrité</span>
-                  <p className="text-zinc-400 leading-relaxed text-[11px]">
-                    Anicetgdn AI vous accompagne toujours avec respect et bienveillance. Si vous vous égarez, il saura vous guider délicatement vers de meilleurs horizons constructifs.
-                  </p>
-                </div>
-              </div>
-
-              {/* Elegant dynamic login reminder if logged out */}
-              {!user && (
-                <div className="p-1 px-3 rounded-full bg-zinc-900/80 border border-zinc-800 text-[11px] text-zinc-500 flex items-center gap-2">
-                  <span>Enregistrez votre progression à vie —</span>
-                  <button
-                    id="welcome-google-signin"
-                    onClick={handleGoogleSignIn}
-                    className="text-emerald-400 font-bold hover:text-emerald-300 transition-colors cursor-pointer"
-                  >
-                    Se connecter avec Google
-                  </button>
-                </div>
-              )}
-
+            <div id="welcome-container" className="h-full flex flex-col justify-center items-center max-w-xl mx-auto py-24 space-y-4 select-none text-center">
+              <h1 className="text-4xl font-bold font-display tracking-tight text-white sm:text-5xl">
+                {greeting}{user?.displayName ? `, ${user.displayName.split(" ")[0]}` : ""} !
+              </h1>
+              <h2 className="text-2xl font-medium text-purple-400 sm:text-3xl font-display">
+                Comment puis-je vous aider ?
+              </h2>
             </div>
           ) : (
             /* Active Live Chats Screen */
@@ -1456,14 +1464,74 @@ export default function App() {
                   <div
                     id={`msg-node-${msg.id}`}
                     key={msg.id}
-                    className={`flex gap-4 p-4 rounded-2xl border transition-all ${
+                    onMouseDown={() => {
+                      if (isUser) startLongPress(msg.id, msg.parts);
+                    }}
+                    onMouseUp={cancelLongPress}
+                    onMouseLeave={cancelLongPress}
+                    onTouchStart={() => {
+                      if (isUser) startLongPress(msg.id, msg.parts);
+                    }}
+                    onTouchEnd={cancelLongPress}
+                    onTouchCancel={cancelLongPress}
+                    onTouchMove={cancelLongPress}
+                    onContextMenu={(e) => {
+                      if (isUser) {
+                        e.preventDefault();
+                        setActiveMenuMsgId(msg.id);
+                        setEditMsgInput(msg.parts);
+                      }
+                    }}
+                    className={`flex gap-4 p-4 rounded-2xl border transition-all relative select-none md:select-text ${
                       isUser
-                        ? "bg-zinc-900/60 border-zinc-800 ml-8 md:ml-16 shadow-sm"
+                        ? "bg-zinc-900/60 border-zinc-800 ml-8 md:ml-16 shadow-sm cursor-pointer hover:border-zinc-750"
                         : "bg-zinc-900/10 border-zinc-900 mr-8 md:mr-16"
-                    }`}
+                    } ${activeMenuMsgId === msg.id ? "ring-2 ring-purple-500/50 border-purple-800/80" : ""}`}
+                    title={isUser ? "Restez appuyé de manière prolongée pour modifier ce message" : undefined}
                   >
+                    {/* The long-press action menu card next to the bubble */}
+                    {activeMenuMsgId === msg.id && (
+                      <div 
+                        id={`menu-box-${msg.id}`}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        className={`absolute z-30 bg-zinc-950 border border-zinc-805 rounded-2xl p-2 shadow-2xl animate-fade-in flex flex-col gap-1 w-48 max-w-[85vw] ${
+                          isUser 
+                            ? "right-2 -top-16" 
+                            : "left-2 -top-16"
+                        }`}
+                      >
+                        <button
+                          id={`action-edit-${msg.id}`}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingMsgId(msg.id);
+                            setEditMsgInput(msg.parts);
+                            setActiveMenuMsgId(null);
+                          }}
+                          className="w-full text-left px-3 py-2 rounded-xl text-xs font-bold text-zinc-200 hover:text-white hover:bg-zinc-900/80 transition-all flex items-center gap-2 cursor-pointer"
+                        >
+                          <Edit className="h-4 w-4 text-purple-400" />
+                          <span>Modifier le texte</span>
+                        </button>
+                        <button
+                          id={`action-close-${msg.id}`}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveMenuMsgId(null);
+                          }}
+                          className="w-full text-left px-3 py-1.5 rounded-xl text-[11px] font-semibold text-zinc-500 hover:text-zinc-350 hover:bg-zinc-900/40 transition-all flex items-center gap-2 cursor-pointer"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          <span>Annuler</span>
+                        </button>
+                      </div>
+                    )}
+
                     {/* User / robot badge avatar */}
-                    <div className="shrink-0">
+                    <div className="shrink-0" onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
                       {isUser ? (
                         <div className="h-8 w-8 flex items-center justify-center rounded-xl bg-purple-950 border border-purple-800/40 text-purple-300 font-bold text-xs">
                           <User className="h-4 w-4" />
@@ -1482,13 +1550,33 @@ export default function App() {
                         <span className="text-[11px] font-bold text-zinc-400">
                           {isUser ? "Vous" : "Anicetgdn AI"}
                         </span>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5" onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
                           <span className="text-[9px] text-zinc-500 mr-1">{msg.timestamp}</span>
                           
+                          {/* Quick direct Pencil Edit utility */}
+                          {isUser && (
+                            <button
+                              id={`edit-direct-btn-${msg.id}`}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingMsgId(msg.id);
+                                setEditMsgInput(msg.parts);
+                              }}
+                              className="p-1 rounded text-zinc-600 hover:text-purple-400 hover:bg-zinc-850 cursor-pointer transition-colors"
+                              title="Modifier le texte"
+                            >
+                              <Edit className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+
                           {/* Play/Listen to message voice read-out trigger */}
                           <button
                             id={`speak-msg-btn-${msg.id}`}
-                            onClick={() => playMessageTextAloud(msg.parts, msg.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              playMessageTextAloud(msg.parts, msg.id);
+                            }}
                             className={`p-1 rounded cursor-pointer transition-all ${
                               currentlyReadingId === msg.id
                                 ? "text-emerald-400 bg-emerald-950/40 hover:bg-emerald-950/60 ring-1 ring-emerald-800"
@@ -1505,7 +1593,10 @@ export default function App() {
 
                           <button
                             id={`copy-msg-btn-${msg.id}`}
-                            onClick={() => copyMessageText(msg.parts, msg.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copyMessageText(msg.parts, msg.id);
+                            }}
                             className="p-1 rounded text-zinc-600 hover:text-zinc-350 hover:bg-zinc-850 cursor-pointer transition-colors"
                             title="Copier la réponse"
                           >
@@ -1520,7 +1611,7 @@ export default function App() {
 
                       {/* Display attachment first if added to user's message bubble */}
                       {msg.imageUrl && (
-                        <div className="max-w-md my-2 rounded-xl border border-zinc-800 bg-zinc-950/50 p-1 divide-zinc-800 overflow-hidden shadow-md">
+                        <div className="max-w-md my-2 rounded-xl border border-zinc-800 bg-zinc-950/50 p-1 divide-zinc-800 overflow-hidden shadow-md" onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
                           <img
                             src={msg.imageUrl}
                             alt="Visual Attachment"
@@ -1530,7 +1621,7 @@ export default function App() {
                         </div>
                       )}
 
-                      {/* Reading state spinner loader */}
+                      {/* Reading state spinner loader or inline editing field */}
                       {msg.parts === "" ? (
                         <div className="flex items-center gap-2 text-zinc-500 text-xs py-1">
                           <span className="animate-bounce">●</span>
@@ -1538,9 +1629,49 @@ export default function App() {
                           <span className="animate-bounce delay-200">●</span>
                           <span className="text-[10px] italic text-zinc-600 ml-1 font-mono">Génération en cours...</span>
                         </div>
+                      ) : editingMsgId === msg.id ? (
+                        <div 
+                          className="space-y-3 pt-1" 
+                          onMouseDown={(e) => e.stopPropagation()} 
+                          onTouchStart={(e) => e.stopPropagation()}
+                        >
+                          <textarea
+                            id={`edit-textbox-${msg.id}`}
+                            value={editMsgInput}
+                            onChange={(e) => setEditMsgInput(e.target.value)}
+                            className="w-full min-h-[90px] p-3 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-100 text-sm focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 font-sans transition-all leading-relaxed select-all"
+                            placeholder="Modifier le texte du message..."
+                            autoFocus
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              id={`save-edit-btn-${msg.id}`}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditMessageSave(msg.id);
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-purple-650 hover:bg-purple-600 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow transition-all"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              <span>Enregistrer</span>
+                            </button>
+                            <button
+                              id={`cancel-edit-btn-${msg.id}`}
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingMsgId(null);
+                              }}
+                              className="px-3.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-zinc-300 font-semibold text-xs border border-zinc-750 cursor-pointer transition-all"
+                            >
+                              Annuler
+                            </button>
+                          </div>
+                        </div>
                       ) : (
                         <div className="text-sm text-zinc-200 leading-relaxed markdown-body">
-                          <Markdown>{msg.parts}</Markdown>
+                          <Markdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.parts}</Markdown>
                         </div>
                       )}
 
@@ -1879,6 +2010,178 @@ export default function App() {
                 </button>
               </div>
 
+            </div>
+          </div>
+        )}
+
+        {/* Firebase Authentication Troubleshoot & Assistance Modal */}
+        {authError && (
+          <div id="auth-error-overlay" className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 animate-fade-in select-none">
+            <div id="auth-error-card" className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-md w-full relative shadow-2xl space-y-5">
+              <button
+                id="close-auth-error-btn"
+                onClick={() => setAuthError(null)}
+                className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800 cursor-pointer transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-red-950 text-red-400">
+                <ShieldCheck className="h-6 w-6" />
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-white font-display text-left">Configuration de Connexion requise</h3>
+                <p className="text-xs text-zinc-400 text-left">
+                  Une restriction de sécurité empêche la connexion Google sur cet appareil. Voici comment résoudre cela en quelques instants :
+                </p>
+              </div>
+
+              {/* Specific message if unauthorized domain */}
+              {authError.code.includes("unauthorized-domain") || authError.message.toLowerCase().includes("unauthorized domain") ? (
+                <div className="space-y-3.5 bg-zinc-950 border border-zinc-850 p-4 rounded-xl text-left">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-red-400 uppercase tracking-wide">Étape 1 : Enregistrer votre adresse</span>
+                    <p className="text-[11px] text-zinc-300 leading-relaxed">
+                      Firebase requiert l'enregistrement explicite de l'adresse de votre application en tant que domaine autorisé.
+                    </p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <span className="text-[9px] text-zinc-500 font-mono">Adresse à copier (Domaine) :</span>
+                    <div className="flex items-center justify-between gap-2 p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-xs">
+                      <span className="truncate text-zinc-300 flex-1 font-mono text-[10px] select-all">{authError.domain}</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (authError.domain) {
+                            navigator.clipboard.writeText(authError.domain);
+                            alert("Copie réussie !");
+                          }
+                        }}
+                        className="p-1 px-2 pb-1 bg-zinc-800 hover:bg-zinc-700 text-[10px] font-bold text-zinc-200 rounded cursor-pointer"
+                      >
+                        Copier
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1.5 border-t border-zinc-900 text-[11px] text-zinc-400 leading-relaxed">
+                    <span className="font-bold text-zinc-300 block">Dans votre console Firebase :</span>
+                    <ol className="list-decimal pl-4 space-y-1">
+                      <li>Ouvrez <strong className="text-zinc-200">Authentication</strong> → <strong className="text-zinc-200">Paramètres</strong></li>
+                      <li>Cliquez sur <strong className="text-zinc-200">Domaines autorisés</strong> (Authorized Domains)</li>
+                      <li>Cliquez sur <strong className="text-zinc-200">Ajouter un domaine (Add Domain)</strong> et collez l'adresse ci-dessus</li>
+                    </ol>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 bg-zinc-950 border border-zinc-855 p-4 rounded-xl text-left">
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Détails de l'erreur</span>
+                  <p className="text-xs text-red-500 font-mono break-all">{authError.code || "erreur_connexion"} : {authError.message}</p>
+                </div>
+              )}
+
+              {/* Navigation Action fallback for Safari/Mobile nested browsing */}
+              <div className="space-y-2.5 pt-2">
+                <p className="text-[10px] text-zinc-400 text-left leading-relaxed">
+                  💡 <strong className="text-zinc-300">Sur Mobile et Safari</strong>, les popups de connexion tiers sont souvent bloqués. Nous vous conseillons d'ouvrir l'application dans son propre onglet :
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        window.open(window.location.href, "_blank");
+                      }
+                    }}
+                    className="flex-1 py-2 rounded-xl bg-purple-650 hover:bg-purple-600 text-white font-bold text-xs cursor-pointer text-center flex items-center justify-center gap-1.5 shadow"
+                  >
+                    <span>Ouvrir dans un nouvel onglet</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAuthError(null)}
+                    className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-zinc-300 text-xs font-semibold border border-zinc-750 cursor-pointer"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* API Key configuration and instructions Modal */}
+        {showKeyHelpModal && (
+          <div id="key-help-overlay" className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 animate-fade-in select-none">
+            <div id="key-help-card" className="bg-zinc-900 border border-zinc-800 rounded-3xl p-6 max-w-md w-full relative shadow-2xl space-y-5">
+              <button
+                id="close-key-help-btn"
+                onClick={() => setShowKeyHelpModal(false)}
+                className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800 cursor-pointer transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+
+              <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-950 text-amber-400">
+                <KeyRound className="h-6 w-6" />
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-base font-bold text-white font-display text-left">Configuration de la clé API Gemini</h3>
+                <p className="text-xs text-zinc-400 text-left">
+                  {backendConfigured 
+                    ? "Votre clé API Gemini est configurée avec succès et l'application fonctionne parfaitement."
+                    : "L'application requiert une clé API Google Gemini pour faire fonctionner l'intelligence artificielle."}
+                </p>
+              </div>
+
+              {!backendConfigured ? (
+                <div className="space-y-3.5 bg-zinc-950 border border-zinc-850 p-4 rounded-xl text-left">
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-amber-400 uppercase tracking-wide">Comment configurer la clé :</span>
+                    <p className="text-[11px] text-zinc-300 leading-relaxed">
+                      Voici les étapes simples pour connecter votre clé API à votre application :
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5 pt-1 text-[11px] text-zinc-400 leading-relaxed">
+                    <ol className="list-decimal pl-4 space-y-2">
+                      <li>
+                        <strong className="text-zinc-250">Générez une clé gratuite</strong> si vous n'en avez pas, sur <a href="https://aistudio.google.com" target="_blank" rel="noopener noreferrer" className="text-amber-400 hover:underline">aistudio.google.com <ExternalLink className="inline h-3 w-3" /></a>
+                      </li>
+                      <li>
+                        Dans le menu de l'éditeur <strong className="text-zinc-250">Google AI Studio</strong> (sur votre écran principal de développement), cliquez sur l'onglet <strong className="text-zinc-250">Secrets / Paramètres</strong> en haut à droite.
+                      </li>
+                      <li>
+                        Ajoutez la variable <code className="text-amber-400 bg-zinc-900 px-1 py-0.5 rounded font-mono text-[10px]">GEMINI_API_KEY</code> avec votre clé générée. Le serveur de l'application sera mis à jour instantanément !
+                      </li>
+                    </ol>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3 bg-zinc-950 border border-emerald-950 p-4 rounded-xl text-left flex items-start gap-2.5">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 mt-1.5 shrink-0 animate-pulse" />
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wide">Statut : Connecté</span>
+                    <p className="text-[11px] text-zinc-300">
+                      Votre serveur utilise actuellement la clé <code className="font-mono text-zinc-400">GEMINI_API_KEY</code> fournie pour alimenter les conversations. Tout est opérationnel !
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowKeyHelpModal(false)}
+                  className="w-full py-2 rounded-xl bg-zinc-800 hover:bg-zinc-750 text-white font-semibold text-xs cursor-pointer border border-zinc-700 text-center"
+                >
+                  Fermer
+                </button>
+              </div>
             </div>
           </div>
         )}
