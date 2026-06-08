@@ -155,7 +155,7 @@ export default function App() {
   const [systemInstruction, setSystemInstruction] = useState(
     PRESET_INSTRUCTIONS[0].instruction
   );
-  const [useSearch, setUseSearch] = useState(false);
+  const [useSearch, setUseSearch] = useState(true);
   const [selectedModel, setSelectedModel] = useState("gemini-3.5-flash");
 
   // Interaction controls
@@ -455,7 +455,7 @@ export default function App() {
         : "Nouvelle discussion",
       messages: [],
       systemInstruction: preset.instruction,
-      useSearch: false,
+      useSearch: useSearch,
       modelName: "gemini-3.5-flash",
       createdAt: new Date().toLocaleDateString("fr-FR", {
         hour: "2-digit",
@@ -469,7 +469,7 @@ export default function App() {
       setActiveId(id);
       if (firstMessageText) {
         setTimeout(() => {
-          sendDirectMessage(id, firstMessageText, preset.instruction, false, "gemini-3.5-flash");
+          sendDirectMessage(id, firstMessageText, preset.instruction, useSearch, "gemini-3.5-flash");
         }, 60);
       }
     } else {
@@ -481,7 +481,7 @@ export default function App() {
           title: newChat.title,
           userId: user.uid,
           systemInstruction: preset.instruction,
-          useSearch: false,
+          useSearch: useSearch,
           modelName: "gemini-3.5-flash",
           createdAt: newChat.createdAt,
         });
@@ -491,7 +491,7 @@ export default function App() {
 
         if (firstMessageText) {
           setTimeout(() => {
-            sendDirectMessage(id, firstMessageText, preset.instruction, false, "gemini-3.5-flash");
+            sendDirectMessage(id, firstMessageText, preset.instruction, useSearch, "gemini-3.5-flash");
           }, 60);
         }
       } catch (err) {
@@ -1348,8 +1348,40 @@ export default function App() {
             </div>
           </div>
 
-          {/* Header controls layout (removed Lien Mobile, Recherche Web, and Changer Rôle) */}
+          {/* Header controls layout (re-integrated Recherche Web and Changer Rôle) */}
           <div className="flex items-center gap-2 text-xs">
+            {/* Real-time Google Search grounding Toggle Button */}
+            <button
+              id="header-toggle-search-btn"
+              onClick={() => {
+                const newVal = !useSearch;
+                setUseSearch(newVal);
+                updateActiveConfig({ useSearch: newVal });
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                useSearch
+                  ? "bg-emerald-950/40 border-emerald-800/80 text-emerald-400 font-medium"
+                  : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+              }`}
+              title={useSearch ? "Recherche Google Web active pour cette discussion" : "Activer la recherche Google Web en temps réel"}
+            >
+              {useSearch && <Globe className="h-3.5 w-3.5 animate-pulse" />}
+              <span className="hidden sm:inline font-sans text-xs">Infos en Direct {useSearch ? "Actif" : "Inactif"}</span>
+            </button>
+
+            {/* Custom Presets / Instructions Toggle Button */}
+            <button
+              id="header-toggle-settings-btn"
+              onClick={() => setShowSettings((prev) => !prev)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all cursor-pointer ${
+                showSettings
+                  ? "bg-purple-950/40 border-purple-800/80 text-purple-400 font-medium"
+                  : "bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700"
+              }`}
+              title="Changer de rôle (Général, Maths, PCT, SVT, Développeur...)"
+            >
+              <span className="hidden sm:inline font-sans text-xs">Changer de Rôle</span>
+            </button>
           </div>
         </header>
 
