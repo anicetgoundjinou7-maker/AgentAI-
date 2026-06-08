@@ -1365,7 +1365,6 @@ export default function App() {
               }`}
               title={useSearch ? "Recherche Google Web active pour cette discussion" : "Activer la recherche Google Web en temps réel"}
             >
-              {useSearch && <Globe className="h-3.5 w-3.5 animate-pulse" />}
               <span className="hidden sm:inline font-sans text-xs">Infos en Direct {useSearch ? "Actif" : "Inactif"}</span>
             </button>
 
